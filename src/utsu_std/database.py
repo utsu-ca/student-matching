@@ -3,6 +3,8 @@ from pathlib import Path
 import sqlite3
 import csv
 
+from utsu_std.utils import generate_uuid, strip_truncated_student_number
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +15,12 @@ def create_db(filepath: Path):
 def get_connection(filepath : Path):
     return sqlite3.connect(filepath)
 
-"""
+
+def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
+    """
     Function to import CSV data into the specified table in the database.
     Adds an import_date column to track when the data was imported.
-"""
-def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
+    """
     try: 
         cursor = conn.cursor()
         with open(csv_file, newline='') as f:
@@ -34,39 +37,90 @@ def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
         conn.rollback()
     conn.close()
 
-"""
-    Function to import UofT data from a CSV file into the database.
-    Checks if the CSV headers match the expected headers for the uoft_data table.
-    Returns True if the import is successful.
-    Raises ValueError if the CSV headers do not match the expected headers.
-"""
-def import_uoft_data(csv_file: Path, conn: sqlite3.Connection):
-    headers = None
 
-    # Grab the headers from the CSV file
-    with open(csv_file, newline='') as f:
-        reader = csv.reader(f)
+def import_uoft_data(conn: sqlite3.Connection, csv_file: Path = Path("./data/uoft_data.csv")):
+    """
+    Function to import UofT data from a CSV file into the database.
+    Returns True if the import is successful.
+    """
+    logger.info(f"Creating uoft_data table if it does not exist")
+    try:
+        script = open("./schema/uoft_data.sql").read()
+        conn.executescript(script)
+    except Exception as e:
+        logger.error(f"An error occurred while creating uoft_data table: {e}")
+        conn.rollback()
+        return False
+
+    logger.info(f"Importing UofT data from {csv_file}")
+    preprocessed_csv_file = preprocess_uoft_csv(csv_file)
+    logger.info(f"Preprocessed UofT CSV file: {csv_file} -> {preprocessed_csv_file}")
+    import_csv_to_db(preprocessed_csv_file, "uoft_data", conn)
+
+    logger.info(f"Indexing uoft_data table, please wait...")
+    # apply index on Last Name column, followed by Truncated Student Number
+    cursor = conn.cursor()
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_name ON uoft_data(`last_name`)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trunc_id ON uoft_data(`trunc_id`)")
+    conn.commit()
+    logger.info(f"Indexes applied successfully on uoft_data table")
+
+    return True
+
+def preprocess_uoft_csv(csv_file: Path):
+    # Preprocess the UofT CSV file to ensure it meets the required format before importing into the database.
+
+    # step one: ensure required columns are present in the CSV file
+
+    # ensure the CSV file exists
+    if not csv_file.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_file}")
+    
+    required_col = ("First Name", "Last Name", "Truncated Student Number", "Faculty", "Division")
+    processed_csv_file = Path(str(csv_file.stem) + "_processed.csv")
+    with open(csv_file, newline='') as f_in, open(processed_csv_file, 'w', newline='') as f_out:
+        reader = csv.reader(f_in)
         headers = next(reader)
 
-    # Define the expected headers for the uoft_data table
-    # Last Name, First Name, Truncated Student Number, Faculty, Organization, Division
-    expected_headers = ["Last Name", "First Name", "Truncated Student Number", "Faculty", "Organization", "Division"]
-    
-    # Check if all the expected headers are present in the CSV file
-    if set(expected_headers) <= set(headers):
-        import_csv_to_db(csv_file, "uoft_data", conn)
+        # check if required columns are present in the headers
+        if not set(required_col).issubset(set(headers)):
+            missing_cols = set(required_col) - set(headers)
+            # clean up after self
+            f_out.close()
+            processed_csv_file.unlink()
 
-        logger.info(f"Indexing uoft_data table, please wait...")
-        # apply index on Last Name column, followed by Truncated Student Number
-        cursor = conn.cursor()
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_name ON uoft_data(`Last Name`)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_truncated_student_number ON uoft_data(`Truncated Student Number`)")
-        conn.commit()
-        logger.info(f"Indexes applied successfully on uoft_data table")
+            raise ValueError(f"Missing required columns: {missing_cols}")
 
-        return True
-    
-    raise ValueError(f"CSV headers do not match expected headers for uoft_data table: {expected_headers}")
+        # prepare the CSV writer with the expected headers
+        expected_headers: tuple[str, ...] = ("uuid", "last_name", "first_name", "trunc_id", "faculty", "division")
+        writer = csv.DictWriter(f_out, fieldnames=expected_headers)
+        writer.writeheader()
+
+        # step two: process rows
+        for row in reader:
+            # remove whitespace per value
+            row = [_.strip() for _ in row]
+
+            # using dictionary so order doesn't matter
+            row_dict = {}
+
+            trunc_id_indx = headers.index("Truncated Student Number")
+            last_name_indx = headers.index("Last Name")
+            first_name_indx = headers.index("First Name")
+            faculty_indx = headers.index("Faculty")
+            division_indx = headers.index("Division")
+
+            row_dict["trunc_id"] = row[trunc_id_indx].strip("x")
+            row_dict["last_name"] = row[last_name_indx]
+            row_dict["first_name"] = row[first_name_indx]
+            row_dict["faculty"] = row[faculty_indx]
+            row_dict["division"] = row[division_indx]
+            # generate UUID; should be safe for UUID as .values() returns in insertion order.
+            row_dict["uuid"] = generate_uuid("".join(row_dict.values()))
+
+            writer.writerow(row_dict)
+    return processed_csv_file
+preprocess_uoft_csv(Path("../../tests/utsu_std/test_data/fake_uoft_data.csv"))
 
 def export_db_to_csv(table_name: str, csv_file: Path, conn: sqlite3.Connection):
     try:
@@ -103,40 +157,3 @@ def return_all_values(table_name: str, column_name: str, conn: sqlite3.Connectio
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         return []
-
-def exact_bulk_query(batch: list[dict], conn: sqlite3.Connection):
-    """Perform an exact bulk query on the uoft_data table for the given batch of students.
-    
-    Args:
-        batch (list[dict]): A list of student dictionaries containing the keys "First Name", "Last Name", and "Truncated Student Number".
-        conn (sqlite3.Connection): The SQLite database connection.
-
-    Returns:
-        list: A list of rows from the uoft_data table that match the given batch of students.
-    """
-
-    # Implement the exact bulk query logic here
-
-    cursor = conn.cursor()
-    "First Name", "Last Name", "Truncated Student Number"
-    columns = ["First Name", "Last Name", "Truncated Student Number"]
-
-    # check keys exist in batch
-    for student in batch:
-        for col in columns:
-            if col not in student:
-                raise ValueError(f"Missing key '{col}' in student dictionary: {student}")
-
-    # Construct the WHERE clause for the exact match query
-    where_clauses = []
-    for student in batch:
-        conditions = [f"`{col}` = ?" for col in columns]
-        where_clauses.append(f"({' AND '.join(conditions)})")
-
-    query = f"SELECT * FROM uoft_data WHERE {' OR '.join(where_clauses)}"
-    values = [student[col] for student in batch for col in columns]
-
-    cursor.execute(query, values)
-    results = cursor.fetchall()
-
-    return results

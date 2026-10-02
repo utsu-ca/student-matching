@@ -2,16 +2,18 @@
 
 from argparse import ArgumentParser, Namespace
 import argparse
+import csv
 import json
 import logging
 import os
 from pathlib import Path
 import re
 import sys
+import uuid
 
 logger = logging.getLogger(__name__)
 
-def setup_logging(verbosity: int, log_file: str = None, dry_run: bool = False):
+def setup_logging(verbosity: int, log_file: str = "", dry_run: bool = False):
     # Add extra logging level
     addLoggingLevel('TRACE', logging.DEBUG - 5)
 
@@ -21,7 +23,7 @@ def setup_logging(verbosity: int, log_file: str = None, dry_run: bool = False):
     elif verbosity == 2:
         level = logging.DEBUG
     elif verbosity >= 3:
-        level = logging.TRACE
+        level = logging.TRACE # type: ignore
 
     handlers = [logging.StreamHandler(sys.stdout)]
     format_string = "%(asctime)s [%(levelname)s] %(message)s"
@@ -169,6 +171,76 @@ def normalize_case(txt: str) -> str:
     
     # 2. Capitalize letters only if they follow a space or start the string
     return re.sub(r'(^|\s)([a-z])', lambda m: m.group(1) + m.group(2).upper(), no_extra_spaces)
+
+def generate_uuid(base: str) -> str:
+    """
+    Derive a UUID (Universally Unique Identifier) as a string.
+
+    Parameters
+    ---
+    base : str
+
+    Returns
+    -------
+    str
+        The generated UUID.
+    """
+    namespace = uuid.NAMESPACE_URL
+    return str(uuid.uuid5(namespace, base))
+
+def get_truncated_student_number(student_number: str) -> str:
+    """
+    Get the truncated student number in the format 'xxxxx####x'.
+
+    Parameters
+    ----------
+    student_number : str
+        The original student number.
+
+    Returns
+    -------
+    str
+        The truncated student number in UofT format.
+    
+    >>> get_truncated_student_number("1234567890")
+    'xxxxx6789x'
+    """
+    return "xxxxx" + student_number[-5:-1] + "x"
+
+def strip_truncated_student_number(csv_file: Path):
+    """
+    Strip the placeholder x characters from the truncated student number in the CSV file and save it to a temporary file.
+
+    Parameters
+    ----------
+    csv_file : Path
+        The path to the CSV file.
+
+    Returns
+    -------
+    Path
+        The path to the temporary CSV file with stripped truncated student numbers.
+
+    >>> strip_truncated_student_number(Path("./data/fake_uoft_data.csv"))
+    PosixPath('data/fake_uoft_data.stripped.csv')
+
+    """
+    temp_file = csv_file.with_suffix(".stripped.csv")
+    with open(csv_file, newline='') as f_in, open(temp_file, 'w', newline='') as f_out:
+        reader = csv.reader(f_in)
+        headers = next(reader)
+
+        if "Truncated Student Number" not in headers:
+            raise ValueError("CSV file does not contain 'Truncated Student Number' column.")
+
+        trunc_col_indx = headers.index("Truncated Student Number")
+        writer = csv.writer(f_out)
+        writer.writerow(headers)
+        for row in reader:
+            row[trunc_col_indx] = row[trunc_col_indx].strip("x")  # Strip the Truncated Student Number column
+            writer.writerow(row)
+    return temp_file
+
 
 if __name__ == '__main__':
     import doctest
