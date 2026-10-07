@@ -1,9 +1,5 @@
-.venv/
-.idea/
-secrets/
+.venv
+.idea
+secrets/*
 *.sqlite3
 uv.lock
-.pytest_cache
-*.pyc
-__pycache__
-*.log

@@ -3,12 +3,17 @@ from pathlib import Path
 import sqlite3
 import csv
 
-from utsu_std.utils import generate_uuid, normalize_case, get_uoft_trunc_format, get_trunc_id
+from utsu_std.utils import generate_uuid, strip_truncated_student_number, normalize_case
 
 logger = logging.getLogger(__name__)
 
+def create_db(filepath: Path):
+    conn = sqlite3.connect(filepath)
+    return conn
+
 def get_connection(filepath : Path):
     return sqlite3.connect(filepath)
+
 
 def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     """
@@ -29,7 +34,93 @@ def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         conn.rollback()
-        raise e
+    conn.close()
+
+
+def import_uoft_data(conn: sqlite3.Connection, csv_file: Path = Path("./data/uoft_data.csv")):
+    """
+    Function to import UofT data from a CSV file into the database.
+    Returns True if the import is successful.
+    """
+    logger.info(f"Creating uoft_data table if it does not exist")
+    try:
+        script = open("./schema/uoft_data.sql").read()
+        conn.executescript(script)
+    except Exception as e:
+        logger.error(f"An error occurred while creating uoft_data table: {e}")
+        conn.rollback()
+        return False
+
+    logger.info(f"Importing UofT data from {csv_file}")
+    preprocessed_csv_file = preprocess_uoft_csv(csv_file)
+    logger.info(f"Preprocessed UofT CSV file: {csv_file} -> {preprocessed_csv_file}")
+    import_csv_to_db(preprocessed_csv_file, "uoft_data", conn)
+
+    logger.info(f"Indexing uoft_data table, please wait...")
+    # apply index on Last Name column, followed by Truncated Student Number
+    cursor = conn.cursor()
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_name ON uoft_data(`full_name`)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trunc_id ON uoft_data(`trunc_id`)")
+    conn.commit()
+    logger.info(f"Indexes applied successfully on uoft_data table")
+
+    return True
+
+def preprocess_uoft_csv(csv_file: Path):
+    # Preprocess the UofT CSV file to ensure it meets the required format before importing into the database.
+
+    # step one: ensure required columns are present in the CSV file
+
+    # ensure the CSV file exists
+    if not csv_file.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_file}")
+    
+    required_col = ("First Name", "Last Name", "Truncated Student Number", "Faculty", "Division")
+    processed_csv_file = Path(str(csv_file.stem) + "_processed.csv")
+    with open(csv_file, newline='') as f_in, open(processed_csv_file, 'w', newline='') as f_out:
+        reader = csv.reader(f_in)
+        headers = next(reader)
+
+        # check if required columns are present in the headers
+        if not set(required_col).issubset(set(headers)):
+            missing_cols = set(required_col) - set(headers)
+            # clean up after self
+            f_out.close()
+            processed_csv_file.unlink()
+
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+        # prepare the CSV writer with the expected headers
+        expected_headers: tuple[str, ...] = ("uuid", "last_name", "first_name", "trunc_id", "faculty", "division")
+        writer = csv.DictWriter(f_out, fieldnames=expected_headers)
+        writer.writeheader()
+
+        # step two: process rows
+        for row in reader:
+            # normalize and remove whitespace per value
+            row = [normalize_case(_.strip()) for _ in row]
+
+            # using dictionary so order doesn't matter
+            row_dict = {}
+
+            trunc_id_indx = headers.index("Truncated Student Number")
+            last_name_indx = headers.index("Last Name")
+            first_name_indx = headers.index("First Name")
+            faculty_indx = headers.index("Faculty")
+            division_indx = headers.index("Division")
+
+            row_dict["trunc_id"] = row[trunc_id_indx].strip("x")
+            row_dict["last_name"] = row[last_name_indx]
+            row_dict["first_name"] = row[first_name_indx]
+            row_dict["full_name"] = f"{row[first_name_indx]} {row[last_name_indx]}"
+            row_dict["faculty"] = row[faculty_indx]
+            row_dict["division"] = row[division_indx]
+            # generate UUID; should be safe for UUID as .values() returns in insertion order.
+            row_dict["uuid"] = generate_uuid("".join(row_dict.values()))
+
+            writer.writerow(row_dict)
+    return processed_csv_file
+preprocess_uoft_csv(Path("../../tests/utsu_std/test_data/fake_uoft_data.csv"))
 
 def export_db_to_csv(table_name: str, csv_file: Path, conn: sqlite3.Connection):
     try:
@@ -67,97 +158,23 @@ def return_all_values(table_name: str, column_name: str, conn: sqlite3.Connectio
         logger.error(f"An error occurred: {e}")
         return []
 
-def check_for_student(student: dict[str, str], cursor: sqlite3.Cursor):
-    """
-    Verify the provided student information against the stored database records.
+def construct_lookup_tables(mapping_file: Path) -> list[dict[str, str]]:
+    # ensure the file exists
+    if not mapping_file.exists():
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
 
-    Args:
-        cursor (Cursor): The database cursor to execute queries against.
-        student (dict[str, str]): The student object containing the student's information to be verified.
-        The student dictionary should contain the following keys:
-            - "id" (optional): The full student ID.
-            - "trun_id" (optional): The truncated student ID derived from the full ID.
-            - "first_name": The student's first name.
-            - "last_name": The student's last name.
-
-    Returns:
-        bool: True if the student information matches any stored records, False otherwise.
-    """
-
-    keys = student.keys()
-
-    # check if id is supplied and derive trunc_id
-    if "id" in keys and "trun_id" not in keys:
-        student["trun_id"] = get_uoft_trunc_format(student["id"])
-
-    # Ensure that the required student information fields are present
-    required_fields = {"trun_id", "first_name", "last_name"}
-    # Use subset math to determine if any required fields are missing
-    if not required_fields.issubset(keys):
-        missing_fields = required_fields - keys
-        for field in missing_fields:
-            logger.error(f"{field.replace('_', ' ').title()} is missing from the provided student information.")
-        return False
-
-    # query the database for the student information based on the required fields
-    query = "SELECT * FROM students WHERE trun_id = ? AND first_name = ? AND last_name = ?"
-    cursor.execute(query, (student["trun_id"], student["first_name"], student["last_name"]))
-    matches = cursor.fetchall()
-
-    return {"result": matches.__len__() == 1, "matches": matches}
-
-def bulk_check_for_students(full_names: list[str], trunc_ids: list[str], cursor: sqlite3.Cursor,
-                            log_sample: bool = False):
-    """
-    Check students against uoft_data by (trunc_id, full_name).
-
-    Returns {"result": bool, "matches": [...uoft_data rows], "non_matches": [(full_name, trunc_id), ...]}.
-    If log_sample is True, 5 rows from uoft_data are logged.
-    """
-    if log_sample:
-        cursor.execute("SELECT * FROM uoft_data LIMIT 5")
-        for sample_row in cursor.fetchall():
-            logger.info(f"uoft_data sample: {sample_row}")
-
-    cursor.execute("DROP TABLE IF EXISTS temp_chk_stds")
-    cursor.execute("CREATE TEMP TABLE temp_chk_stds (trunc_id INTEGER, full_name TEXT)")
-
-    cursor.executemany(
-        "INSERT INTO temp_chk_stds (full_name, trunc_id) VALUES (?, ?)",
-        [
-            ( full_name, trunc_id )
-            for full_name, trunc_id in zip(full_names, trunc_ids)
-        ]
-    )
-
+    name_table_mapping = {}
+    table_name_mapping = {}
     try:
-        query = """
-                SELECT s.*
-                FROM uoft_data s
-                INNER JOIN temp_chk_stds t
-                ON s.trunc_id = t.trunc_id AND s.full_name = t.full_name
-            """
-        cursor.execute(query)
-        matches = cursor.fetchall()
-
-        cursor.execute("""
-                SELECT t.full_name, t.trunc_id
-                FROM temp_chk_stds t
-                LEFT JOIN uoft_data s
-                ON s.trunc_id = t.trunc_id AND s.full_name = t.full_name
-                WHERE s.uuid IS NULL
-            """)
-        non_matches = cursor.fetchall()
+        with open(mapping_file, 'r') as f:
+            header = f.readline()  # skip the header row
+            logger.info(f"Processing lookup table from {mapping_file}; header: {header}")
+            for row in f:
+                row = row.strip().split(",")
+                if len(row) >= 2:
+                    name_table_mapping[row[0]] = row[1]
+                    table_name_mapping[row[1]] = row[0]
     except Exception as e:
-        cursor.execute("DROP TABLE IF EXISTS temp_chk_stds")
-        logger.error(f"Error occurred during bulk check for students: {e}")
-        matches = []
-        non_matches = list(zip(full_names, trunc_ids))
+        logger.error(f"An error occurred: {e}")
 
-    result = {"result": matches.__len__() == len(full_names), "matches": matches,
-              "non_matches": non_matches}
-
-    cursor.execute("DROP TABLE IF EXISTS temp_chk_stds")
-
-    return result
-
+    return [name_table_mapping, table_name_mapping]
