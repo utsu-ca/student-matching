@@ -49,25 +49,5 @@ def check_for_student(student: dict[str, any], cursor: Cursor):
     cursor.execute(query, (student["trun_id"], student["first_name"], student["last_name"]))
     matches = cursor.fetchall()
 
-    return {"result": matches.__len__() > 0, "matches": matches}
+    return {"result": matches.__len__() == 1, "matches": matches}
 
-def bulk_check_for_students(students: list[dict[str, any]], cursor: Cursor):
-    """
-    Verify a list of students against the stored database records.
-
-    Args:
-        students (list[dict[str, any]]): A list of student objects to be verified.
-        cursor (Cursor): The stored database records to verify against.
-
-    Returns:
-        list[dict[str, any]]: A list of dictionaries indicating the verification result for each student, including matches.
-    """
-    return [check_for_student(student, cursor) for student in students]
-
-
-def verify_student(student: dict[str, any], cursor: Cursor):
-    result = check_for_student(student, cursor)
-    if result["result"] and result["matches"].__len__() == 1:
-        return True
-    
-    return False

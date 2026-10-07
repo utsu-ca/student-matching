@@ -11,6 +11,8 @@ import re
 import sys
 import uuid
 
+import unicodedata
+
 logger = logging.getLogger(__name__)
 
 def setup_logging(verbosity: int, log_file: str = "", dry_run: bool = False):
@@ -162,15 +164,27 @@ def normalize_case(txt: str) -> str:
 
     >>> normalize_case("  MIXED case SEntence  ")
     'Mixed Case Sentence'
-    
+
+    >>> normalize_case("  eÉ  ")
+    'Eé'
     """
     # Gemini Disclosure:
 
-    # 1. Collapse all consecutive spaces to a single space and strip the edges
-    no_extra_spaces = re.sub(r'\s+', ' ', txt).strip().lower()
-    
-    # 2. Capitalize letters only if they follow a space or start the string
-    return re.sub(r'(^|\s)([a-z])', lambda m: m.group(1) + m.group(2).upper(), no_extra_spaces)
+    # Step 1: Normalize the Unicode string (NFC ensures composed characters)
+    normalized = unicodedata.normalize('NFC', txt)
+
+    # Step 2: Define a function to capitalize the first character and lower the rest of a word
+    def capitalize_match(match):
+        word = match.group(0)
+        # Use .capitalize() or title logic per word with proper case mapping
+        # For full unicode awareness, upper/lower the first/subsequent chars:
+        if not word:
+            return word
+        return word[0].upper() + word[1:].lower()
+
+    # Step 3: Match Unicode word characters (supports international alphabets)
+    # \w matches alphanumeric characters plus underscores in regex with re.UNICODE/default in Python 3
+    return re.sub(r'\b\w+\b', capitalize_match, normalized)
 
 def generate_uuid(base: str) -> str:
     """

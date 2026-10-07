@@ -3,8 +3,7 @@ from pathlib import Path
 import sqlite3
 import csv
 
-from utsu_std.utils import generate_uuid, strip_truncated_student_number
-
+from utsu_std.utils import generate_uuid, strip_truncated_student_number, normalize_case
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +59,7 @@ def import_uoft_data(conn: sqlite3.Connection, csv_file: Path = Path("./data/uof
     logger.info(f"Indexing uoft_data table, please wait...")
     # apply index on Last Name column, followed by Truncated Student Number
     cursor = conn.cursor()
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_name ON uoft_data(`last_name`)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_name ON uoft_data(`full_name`)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trunc_id ON uoft_data(`trunc_id`)")
     conn.commit()
     logger.info(f"Indexes applied successfully on uoft_data table")
@@ -98,8 +97,8 @@ def preprocess_uoft_csv(csv_file: Path):
 
         # step two: process rows
         for row in reader:
-            # remove whitespace per value
-            row = [_.strip() for _ in row]
+            # normalize and remove whitespace per value
+            row = [normalize_case(_.strip()) for _ in row]
 
             # using dictionary so order doesn't matter
             row_dict = {}
@@ -113,6 +112,7 @@ def preprocess_uoft_csv(csv_file: Path):
             row_dict["trunc_id"] = row[trunc_id_indx].strip("x")
             row_dict["last_name"] = row[last_name_indx]
             row_dict["first_name"] = row[first_name_indx]
+            row_dict["full_name"] = f"{row[first_name_indx]} {row[last_name_indx]}"
             row_dict["faculty"] = row[faculty_indx]
             row_dict["division"] = row[division_indx]
             # generate UUID; should be safe for UUID as .values() returns in insertion order.
@@ -157,3 +157,24 @@ def return_all_values(table_name: str, column_name: str, conn: sqlite3.Connectio
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         return []
+
+def construct_lookup_tables(mapping_file: Path) -> list[dict[str, str]]:
+    # ensure the file exists
+    if not mapping_file.exists():
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+
+    name_table_mapping = {}
+    table_name_mapping = {}
+    try:
+        with open(mapping_file, 'r') as f:
+            header = f.readline()  # skip the header row
+            logger.info(f"Processing lookup table from {mapping_file}; header: {header}")
+            for row in f:
+                row = row.strip().split(",")
+                if len(row) >= 2:
+                    name_table_mapping[row[0]] = row[1]
+                    table_name_mapping[row[1]] = row[0]
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+
+    return [name_table_mapping, table_name_mapping]

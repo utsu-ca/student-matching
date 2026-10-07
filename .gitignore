@@ -1,2 +1,5 @@
-/.secrets/
+.venv
+.idea
+secrets/*
 *.sqlite3
+uv.lock
