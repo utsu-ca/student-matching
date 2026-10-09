@@ -51,7 +51,8 @@ def preprocess_uoft_csv(csv_file: Path):
 
     required_col = ("First Name", "Last Name", "Truncated Student Number", "Faculty", "Division")
     processed_csv_file = Path(str(csv_file.stem) + "_processed.csv")
-    with open(csv_file, newline='') as f_in, open(processed_csv_file, 'w', newline='') as f_out:
+    with open(csv_file, newline='', encoding='utf-8-sig') as f_in, \
+            open(processed_csv_file, 'w', newline='', encoding='utf-8') as f_out:
         reader = csv.reader(f_in)
         headers = next(reader)
 
@@ -84,9 +85,9 @@ def preprocess_uoft_csv(csv_file: Path):
             row_dict["trunc_id"] = re.sub(r'\D+', '', row[trunc_id_indx]) # use regex, keep numeric
             row_dict["last_name"] = normalize_case(row[last_name_indx])
             row_dict["first_name"] = normalize_case(row[first_name_indx])
-            row_dict["full_name"] = f"{row[first_name_indx]} {row[last_name_indx]}"
-            row_dict["faculty"] = row[faculty_indx].upper()
-            row_dict["division"] = row[division_indx].upper()
+            row_dict["full_name"] = f"{row_dict["first_name"]} {row_dict["last_name"]}"
+            row_dict["faculty"] = row[faculty_indx].upper().strip()
+            row_dict["division"] = row[division_indx].upper().strip()
             # generate UUID; should be safe for UUID as .values() returns in insertion order.
             row_dict["uuid"] = generate_uuid("".join(row_dict.values()))
 

@@ -13,17 +13,17 @@ def get_connection(filepath : Path):
 def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     """
     Function to import CSV data into the specified table in the database.
-    Adds an import_date column to track when the data was imported.
+    Relies on the table's import_date column default (CURRENT_TIMESTAMP) to record when the data was imported.
     """
     try: 
         cursor = conn.cursor()
-        with open(csv_file, newline='') as f:
+        with open(csv_file, newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
-            headers = next(reader) + ["import_date"]
+            headers = next(reader)
             placeholders = ', '.join(['?'] * len(headers))
             query = f"INSERT INTO {table_name} ({', '.join(headers)}) VALUES ({placeholders})"
             for row in reader:
-                cursor.execute(query, row + ["CURRENT_TIMESTAMP"])
+                cursor.execute(query, row)
         conn.commit()
         logger.info(f"Data imported successfully into {table_name}")
     except Exception as e:

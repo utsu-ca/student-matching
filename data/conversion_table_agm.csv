@@ -1,0 +1,13 @@
+Lookup Key, Replacement Key, Version 1
+"Timestamp", "submission_ts"
+"Username", "personal_email"
+"Preferred Name", "preferred_name"
+"Preferred Pronouns", "pronouns"
+"ACORN-registered First Name", "first_name"
+"ACORN-registered Last Name", "last_name"
+"UofT Email Address", "email"
+"Meeting Preference", "meeting_preference"
+"Do you have any dietary restrictions or food allergies?", "dietary"
+"Accessibility Requirements", "accessibility"
+"Data Processing Confirmation", "data_confirmation"
+"Contact Consent", "contact_consent"

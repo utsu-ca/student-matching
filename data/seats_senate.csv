@@ -1,0 +1,30 @@
+# PLACEHOLDER seat counts (1 each) -- replace with the real number of seats before running for real.
+# constituency: matches the form's "Constituency Choice [...]" names. Faculty/College is per division (use the division code).
+constituency,division,seats
+First-Year Student,,4
+Commuter,,2
+Residence,,2
+Mature Students and Student Parents,,2
+International Students,,4
+First Generation Student,,1
+Small and Specialized Program,,1
+General Member,,50
+Faculty/College,INNIS,3
+Faculty/College,NEW,3
+Faculty/College,SMC,3
+Faculty/College,TRIN,3
+Faculty/College,UC,3
+Faculty/College,VIC,3
+Faculty/College,WDW,3
+Faculty/College,ARCLA,2
+Faculty/College,FPEH,2
+Faculty/College,MUSIC,2
+Faculty/College,APSC,3
+Faculty/College,DENT,1
+Faculty/College,LAW,1
+Faculty/College,MED,1
+Faculty/College,NURS,1
+Faculty/College,PHM,1
+Faculty/College,TST,1
+Faculty/College,TYP,1
+Faculty/College,FIS,1

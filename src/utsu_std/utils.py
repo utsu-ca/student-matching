@@ -1,16 +1,13 @@
 ﻿
 
 from argparse import ArgumentParser, Namespace
-import argparse
 import csv
 import json
 import logging
-import os
 from pathlib import Path
 import re
 import sys
 import uuid
-from turtledemo.penrose import draw
 
 import unicodedata
 
@@ -33,6 +30,9 @@ def setup_logging(args):
     elif verbosity >= 'TRACE':
         level = logging.TRACE # type: ignore
 
+    # Console encodings like cp1252 can't print every character in names; replace instead of raising
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     handlers = [logging.StreamHandler(sys.stdout)]
     format_string = "%(asctime)s [%(levelname)s] %(message)s"
 
@@ -145,7 +145,7 @@ def load_and_merge_config(args: Namespace, parser: ArgumentParser):
 
     for key, value in vars(args).items():
         # skip config-related keys
-        if key in ("config", "save_config"):
+        if key in ("config", "save_config", "testing"):
             continue
 
         # CLI overrides config if explicitly provided

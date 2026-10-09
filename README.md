@@ -1,1 +1,118 @@
 # student-matching
+
+## Testing mode
+
+`testing/` holds fake data (`fake_senator.csv`, `fake_uoft_data.csv`). From `src/`, run the whole pipeline on it with:
+
+```
+python -m utsu_core.main --testing
+```
+
+It reads `testing/`, uses the seats in `data/seats_senate.csv`, and writes a fresh database, the log, and the
+results (`verified.csv`, `unverified.csv`, `seats.csv`, `unseated.csv`, `seating_run.json`) to `testing/output/`.
+`config.json` is not read or changed, and flags such as `--seed` or `--seats_file` still override the defaults.
+`python testing/generate_fake_data.py` regenerates all the fake data: the student roster (`fake_uoft_data.csv`, from
+the seats file) first, then the Senate (`fake_senator.csv`), SABP (`fake_sabp.csv`) and AGM (`fake_agm.csv`) form
+exports, each drawing its applicants from the roster. Use `--only` to pick some, `--students` to set the roster size
+(it must be at least `--sabp-rows`), and `--help` for the seed and row counts. The shared code lives in that file; the
+per-form logic is in `testing/generate_fake_*.py`.
+
+## Student Aid Bursary Program (SABP)
+
+`utsu_core/sap.py` processes the SABP form export (Stages 1-3 of SAS-002). From `src/`:
+
+```
+python -m utsu_core.main --program sap --sap_file path/to/export.csv [--batch_size 50]
+```
+
+(`--testing` supplies `testing/fake_sabp.csv`.) Column names come from `data/conversion_table_sap.csv`; columns not
+listed there are ignored. For each student only the newest application is kept, then it:
+
+- **verifies** name + truncated student number against `uoft_data`, and records one `student_aid` row per application
+  (deterministic `uuid`, matching `student_uuid`, stream, requested amount, WFNI, flags, batch/record). Reprocessing
+  updates those rows but never overwrites `awarded_amount` or `decision`;
+- **scores** the Weighted Financial Need Index for living-costs applications from the policy weights, and adds review
+  flags (`membership_not_confirmed`, `amount_over_max`, `instant_approval_eligible`, `high_wfni`, `no_statement`, ...);
+- **writes** to `<output_dir>`: `sap_verified.csv` / `sap_unverified.csv` (private: names, ID, email),
+  `sap_run.json`, and `sap_batches/batch_NNN.csv` + `.txt`: anonymized batches of at most 50 applications, oldest
+  first, with the general statement, requested amount, WFNI and blank `need_level` / `notes` columns for reviewers.
+  Names, emails, phone numbers, student numbers, postal codes and links are redacted from statements; the
+  committee-facing files carry only the application `uuid` and a record id like `B001-07`. Faculty is left out.
+
+**Two reviewers per batch.** Pass `--reviewers "Ann,Bo,Cy"` (two or more names; testing mode uses `Reviewer_A,B,C`).
+Each batch is assigned to two of them, the least loaded first, and saved in `sap_batch_reviewer`, so existing batches
+keep their reviewers when more are added. Each reviewer gets their own copy in
+`sap_batches/by_reviewer/<name>/batch_NNN.csv` (and `.txt` to read): they fill in `need_level` (0-5) and `notes` and
+return the file to the same place. Reprocessing never overwrites a reviewer's sheet; if a batch has changed since it was
+issued (e.g. the last, partial batch grew) a warning says so and merging reports the missing ratings.
+
+Once the sheets are filled in, merge them:
+
+```
+python -m utsu_core.main --program sap --merge_reviews
+```
+
+This writes `sap_merged_ratings.csv` (and the `sap_review` table): per application the reviewers, each rating, the mean,
+the spread, a `suggested_amount` (the mean of the rubric maximums, capped at the amount requested) and a `status`:
+`agreed`, `discuss` (levels differ by 2 or more), `incomplete` (one rating) or `unrated`. Invalid levels and unknown
+applications are logged as warnings.
+
+## AGM voter RSVPs
+
+`utsu_core/agm.py` processes the AGM voter RSVP export. From `src/`:
+
+```
+python -m utsu_core.main --program agm --agm_file "path/to/RSVP.csv"
+```
+
+(`--testing` supplies `testing/fake_agm.csv`; `python testing/generate_fake_data.py --only agm` regenerates it.) Columns come from
+`data/conversion_table_agm.csv`. Each person's newest RSVP is kept, then verified against `uoft_data`:
+
+- the form has **no student number**, so people are matched on their ACORN-registered name (`name_only_match` flag). A
+  name shared by several students stays unverified (`name shared by N students`) until the form adds a
+  `Student Number` column, which is then used automatically (`name + student number`);
+- every RSVP gets an `agm_rsvp` row (uuid, matching `student_uuid`, status, reason, flags; no names or emails);
+- `<output_dir>` gets **two attendee lists**, sorted by last name with a blank `checked_in` column for the door:
+  `agm_list_all.csv` (every verified attendee) and `agm_list_in_person.csv` (those whose Meeting Preference says
+  "in person"; anything else, including a blank answer, is left off), plus `agm_unverified.csv` (with the reason),
+  `agm_accommodations.csv` (dietary and accessibility needs of verified attendees, by uuid only, no names) and
+  `agm_run.json` (counts by meeting preference, match method and flag). The lists carry names and emails: keep them private.
+
+**Verification on its own.** The verification lives in `utsu_core/agm_verify.py` and can be run without producing any
+lists or database rows, to check an RSVP export against a database that already holds `uoft_data`:
+
+```
+python -m utsu_core.agm_verify --agm_file "path/to/RSVP.csv" --db path/to/db.sqlite [--output_dir DIR]
+python -m utsu_core.agm_verify --testing     # testing/fake_agm.csv against the last `main --testing` database
+```
+
+It writes `agm_verification.csv` (status, reason, match method and flags per person).
+
+## Emailing (`utsu_mail`)
+
+Mail-merge emails sent directly over SMTP. Run from `src/`:
+
+```
+python -m utsu_mail --list_fields                 # templates + columns from src/schema/*.sql
+python -m utsu_mail senate_verified --dry_run     # render a preview, never connects to SMTP
+python -m utsu_mail senate_verified               # preview, confirm, send
+```
+
+**Templates** live in `templates/email/`. `<name>.txt` starts with a `Subject: ...` line, a blank line, then the
+plain-text body; an optional `<name>.html` is added as the HTML version (values are HTML-escaped). Placeholders are
+`{{ field }}`. To change an email, edit the file; to add one, drop in a new `.txt`.
+
+**Recipients** come from a CSV (default `<output_dir>/verified.csv`, or `--recipients`) or a read-only
+`--query "SELECT ... FROM uoft_data ..."` against `--db`; each column is a field, so alias columns to match a template.
+Templates are checked against the recipient columns before anything is sent, and the error points at the schema table
+that has a missing field. Rows with a bad/duplicate address or a blank field a template needs are skipped and listed.
+
+**SMTP** settings go in the `smtp` section of `config.json` (`host`, `from_addr`, and optionally `port`, `security`
+= `starttls`|`ssl`|`none`, `username`, `from_name`, `reply_to`, `delay`). The password is never read from config: set
+`UTSU_SMTP_PASSWORD` or you will be prompted.
+
+**Safety:** a sample is shown first; type `send` to confirm (`t` mails the sample to the sender address only, `r` shows
+another sample). Every outcome is appended to `<output_dir>/mail_log_<template>.csv`, and addresses already sent are
+skipped on rerun unless `--resend` is given.
+
+Tests: `python -m pytest tests`.

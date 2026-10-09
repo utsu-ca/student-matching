@@ -1,7 +1,11 @@
 .venv
 .idea
 secrets/*
+*.sqlite
 *.sqlite3
+verified.csv
+unverified.csv
+*_processed.csv
 uv.lock
 config.json
 *.log
@@ -9,3 +13,4 @@ config.json
 *.pyc
 __pycache__
 *.log
+testing/output/

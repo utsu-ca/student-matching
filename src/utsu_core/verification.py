@@ -66,14 +66,14 @@ def construct_lookup_tables(mapping_file: Path) -> list[dict[str, str]]:
     name_table_mapping = {}
     table_name_mapping = {}
     try:
-        with open(mapping_file, 'r') as f:
-            header = f.readline()  # skip the header row
+        # the csv module handles quoted commas; skipinitialspace allows `"a", "b"` with a space after the comma
+        with open(mapping_file, 'r', newline='', encoding='utf-8-sig') as f:
+            reader = csv.reader(f, skipinitialspace=True)
+            header = next(reader, [])  # skip the header row
             logger.info(f"Processing lookup table from {mapping_file}; header: {header}")
-            print(header)
-            for row in f:
-                # remove newline
-                row = [_.strip('" ') for _ in row.strip().split(",")]
-                if len(row) >= 2:
+            for row in reader:
+                row = [_.strip() for _ in row]
+                if len(row) >= 2 and row[0]:
                     name_table_mapping[row[0]] = row[1]
                     table_name_mapping[row[1]] = row[0]
     except Exception as e:
@@ -90,23 +90,25 @@ def setup_reader(csv_file: Path, mapping_file: Path):
         raise FileNotFoundError(f"CSV file not found: {csv_file}")
 
     required_col = name_table_mapping.keys()
-    f_in = open(csv_file, newline='')
+    f_in = open(csv_file, newline='', encoding='utf-8-sig')
     reader = csv.reader(f_in)
     headers = next(reader)
 
-    # check if required columns are present in the headers
+    # check if required columns are present in the headers; padding such as the form's "Faculty " is ignored
+    headers = [h.strip() for h in headers]
     if not set(required_col).issubset(set(headers)):
         missing_cols = set(required_col) - set(headers)
         raise ValueError(f"Missing required names in columns: {missing_cols}")
 
-    # replace current headers with new names
+    # replace current headers with new names; columns not in the mapping keep their original header so
+    # the remaining columns stay aligned
     new_headers = []
     for key in headers:
-        if key in name_table_mapping:
+        if name_table_mapping.get(key):
             new_headers.append(name_table_mapping[key])
         else:
-            print(key)
-            logger.info(f" {key} not in mapping")
+            new_headers.append(key)
+            logger.debug(f" {key} not in mapping; keeping its original name")
 
     # replace reader
     return csv.DictReader(f_in, fieldnames=new_headers)
