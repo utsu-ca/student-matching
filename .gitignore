@@ -3,3 +3,9 @@
 secrets/*
 *.sqlite3
 uv.lock
+config.json
+*.log
+.pytest_cache
+*.pyc
+__pycache__
+*.log
