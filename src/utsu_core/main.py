@@ -6,7 +6,8 @@ from pathlib import Path
 
 from utsu_core.Importing_data import import_uoft_data, preprocess_uoft_csv
 from utsu_core.senate import verify_senators
-from utsu_std.database import bulk_check_for_students, get_connection
+from utsu_core.verification import bulk_check_for_students
+from utsu_std.database import get_connection
 from utsu_std.utils import get_trunc_id, normalize_case, normalize_name, setup_logging, load_and_merge_config
 
 

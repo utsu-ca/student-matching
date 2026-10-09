@@ -1,17 +1,14 @@
-import logging
+﻿import logging
 from pathlib import Path
 import sqlite3
 import csv
 
-logger = logging.getLogger(__name__)
+from utsu_std.utils import generate_uuid, normalize_case, get_uoft_trunc_format, get_trunc_id
 
-def create_db(filepath: Path):
-    conn = sqlite3.connect(filepath)
-    return conn
+logger = logging.getLogger(__name__)
 
 def get_connection(filepath : Path):
     return sqlite3.connect(filepath)
-
 
 def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     """
@@ -32,7 +29,7 @@ def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         conn.rollback()
-    conn.close()
+        raise e
 
 def export_db_to_csv(table_name: str, csv_file: Path, conn: sqlite3.Connection):
     try:
@@ -70,23 +67,41 @@ def return_all_values(table_name: str, column_name: str, conn: sqlite3.Connectio
         logger.error(f"An error occurred: {e}")
         return []
 
-def construct_lookup_tables(mapping_file: Path) -> list[dict[str, str]]:
-    # ensure the file exists
-    if not mapping_file.exists():
-        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+def check_for_student(student: dict[str, str], cursor: sqlite3.Cursor):
+    """
+    Verify the provided student information against the stored database records.
 
-    name_table_mapping = {}
-    table_name_mapping = {}
-    try:
-        with open(mapping_file, 'r') as f:
-            header = f.readline()  # skip the header row
-            logger.info(f"Processing lookup table from {mapping_file}; header: {header}")
-            for row in f:
-                row = row.strip().split(",")
-                if len(row) >= 2:
-                    name_table_mapping[row[0]] = row[1]
-                    table_name_mapping[row[1]] = row[0]
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
+    Args:
+        cursor (Cursor): The database cursor to execute queries against.
+        student (dict[str, str]): The student object containing the student's information to be verified.
+        The student dictionary should contain the following keys:
+            - "id" (optional): The full student ID.
+            - "trun_id" (optional): The truncated student ID derived from the full ID.
+            - "first_name": The student's first name.
+            - "last_name": The student's last name.
 
-    return [name_table_mapping, table_name_mapping]
+    Returns:
+        bool: True if the student information matches any stored records, False otherwise.
+    """
+
+    keys = student.keys()
+
+    # check if id is supplied and derive trunc_id
+    if "id" in keys and "trun_id" not in keys:
+        student["trun_id"] = get_uoft_trunc_format(student["id"])
+
+    # Ensure that the required student information fields are present
+    required_fields = {"trun_id", "first_name", "last_name"}
+    # Use subset math to determine if any required fields are missing
+    if not required_fields.issubset(keys):
+        missing_fields = required_fields - keys
+        for field in missing_fields:
+            logger.error(f"{field.replace('_', ' ').title()} is missing from the provided student information.")
+        return False
+
+    # query the database for the student information based on the required fields
+    query = "SELECT * FROM students WHERE trun_id = ? AND first_name = ? AND last_name = ?"
+    cursor.execute(query, (student["trun_id"], student["first_name"], student["last_name"]))
+    matches = cursor.fetchall()
+
+    return {"result": matches.__len__() == 1, "matches": matches}

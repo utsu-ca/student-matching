@@ -1,9 +1,61 @@
 import csv
 import logging
+import sqlite3
 from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
+
+
+def bulk_check_for_students(full_names: list[str], trunc_ids: list[str], cursor: sqlite3.Cursor,
+                            log_sample: bool = False):
+    """
+    Check students against uoft_data by (trunc_id, full_name).
+
+    Returns {"result": bool, "matches": [...uoft_data rows], "non_matches": [(full_name, trunc_id), ...]}.
+    If log_sample is True, 5 rows from uoft_data are logged.
+    """
+    if log_sample:
+        cursor.execute("SELECT * FROM uoft_data LIMIT 5")
+        for sample_row in cursor.fetchall():
+            logger.info(f"uoft_data sample: {sample_row}")
+
+    cursor.execute("DROP TABLE IF EXISTS temp_chk_stds")
+    cursor.execute("CREATE TEMP TABLE temp_chk_stds (trunc_id INTEGER, full_name TEXT)")
+
+    cursor.executemany(
+        "INSERT INTO temp_chk_stds (full_name, trunc_id) VALUES (?, ?)",
+        list(zip(full_names, trunc_ids))
+    )
+
+    try:
+        cursor.execute("""
+                SELECT s.*
+                FROM uoft_data s
+                INNER JOIN temp_chk_stds t
+                ON s.trunc_id = t.trunc_id AND s.full_name = t.full_name
+            """)
+        matches = cursor.fetchall()
+
+        cursor.execute("""
+                SELECT t.full_name, t.trunc_id
+                FROM temp_chk_stds t
+                LEFT JOIN uoft_data s
+                ON s.trunc_id = t.trunc_id AND s.full_name = t.full_name
+                WHERE s.uuid IS NULL
+            """)
+        non_matches = cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Error occurred during bulk check for students: {e}")
+        matches = []
+        non_matches = list(zip(full_names, trunc_ids))
+
+    result = {"result": len(matches) == len(full_names), "matches": matches,
+              "non_matches": non_matches}
+
+    cursor.execute("DROP TABLE IF EXISTS temp_chk_stds")
+
+    return result
 
 
 def construct_lookup_tables(mapping_file: Path) -> list[dict[str, str]]:
