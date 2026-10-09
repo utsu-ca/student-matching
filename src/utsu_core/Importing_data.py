@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from utsu_std.database import import_csv_to_db
-from utsu_std.utils import absfile, generate_uuid, normalize_case, absfile
+from utsu_std.utils import absfile, generate_uuid, normalize_case
 
 logger = logging.getLogger(__name__)
 

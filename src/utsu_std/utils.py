@@ -1,11 +1,9 @@
 
 
 from argparse import ArgumentParser, Namespace
-import argparse
 import csv
 import json
 import logging
-import os
 from pathlib import Path
 import re
 import sys
@@ -14,6 +12,44 @@ import uuid
 import unicodedata
 
 logger = logging.getLogger(__name__)
+
+def find_project_root(path: Path | str | None = None) -> Path:
+    """
+    Find the project root, defined as the directory that contains the `src` folder.
+
+    Searches upward from `path` (a file or directory; defaults to this file's location).
+    If the path is inside `src`, the parent of `src` is returned. If no root is found,
+    the path is returned unchanged.
+
+    >>> find_project_root(Path("/nonexistent/place")) == Path("/nonexistent/place")
+    True
+    """
+    start = Path(path) if path is not None else Path(__file__)
+    resolved = start.resolve()
+    current = resolved if resolved.is_dir() else resolved.parent
+
+    for candidate in (current, *current.parents):
+        if candidate.name == "src":
+            return candidate.parent
+        if (candidate / "src").is_dir():
+            return candidate
+
+    return start
+
+def absfile(relative_path: Path | str) -> Path:
+    """
+    Resolve a path relative to the project root into an absolute path.
+
+    Absolute paths are returned unchanged. The project root is located from this
+    file's location, so the result does not depend on the current working directory.
+
+    >>> absfile("src/schema/uoft_data.sql") == find_project_root() / "src" / "schema" / "uoft_data.sql"
+    True
+    """
+    path = Path(relative_path)
+    if path.is_absolute():
+        return path
+    return find_project_root() / path
 
 def setup_logging(verbosity: int, log_file: str = "", dry_run: bool = False):
     # Add extra logging level
@@ -256,6 +292,8 @@ def strip_truncated_student_number(csv_file: Path):
     return temp_file
 
 
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
+

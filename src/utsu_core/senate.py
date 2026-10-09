@@ -3,9 +3,8 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from utsu_core.verification import setup_reader
-from utsu_std.database import check_for_student, bulk_check_for_students
-from utsu_std.utils import normalize_name, get_trunc_id, normalize_case
+from utsu_core.verification import setup_reader, bulk_check_for_students
+from utsu_std.utils import get_trunc_id, normalize_case
 
 logger = logging.getLogger(__name__)
 
