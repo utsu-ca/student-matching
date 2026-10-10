@@ -12,5 +12,6 @@ config.json
 .pytest_cache
 *.pyc
 __pycache__
+*.egg-info
 *.log
 testing/output/

@@ -1,21 +1,37 @@
 # student-matching
 
-## Testing mode
+## Setup
 
-`testing/` holds fake data (`fake_senator.csv`, `fake_uoft_data.csv`). From `src/`, run the whole pipeline on it with:
+From the project root (any Python 3.12+; there are no runtime dependencies):
+
+```
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+The editable install puts `utsu_core`, `utsu_std` and `utsu_mail` on the import path, so every `python -m ...` command
+below works from any directory. Relative paths in flags and `config.json` (`data/`, `secrets/`, `testing/`,
+`templates/`) are always taken from the project root, never from the working directory.
+
+## Testing mode
 
 ```
 python -m utsu_core.main --testing
 ```
 
-It reads `testing/`, uses the seats in `data/seats_senate.csv`, and writes a fresh database, the log, and the
-results (`verified.csv`, `unverified.csv`, `seats.csv`, `unseated.csv`, `seating_run.json`) to `testing/output/`.
-`config.json` is not read or changed, and flags such as `--seed` or `--seats_file` still override the defaults.
-`python testing/generate_fake_data.py` regenerates all the fake data: the student roster (`fake_uoft_data.csv`, from
-the seats file) first, then the Senate (`fake_senator.csv`), SABP (`fake_sabp.csv`) and AGM (`fake_agm.csv`) form
-exports, each drawing its applicants from the roster. Use `--only` to pick some, `--students` to set the roster size
-(it must be at least `--sabp-rows`), and `--help` for the seed and row counts. The shared code lives in that file; the
-per-form logic is in `testing/generate_fake_*.py`.
+This first generates the fake data (the generators are in `testing/`), then runs the whole pipeline on it. The fake
+roster and form exports (`fake_uoft_data.csv`, `fake_senator.csv`, `fake_sabp.csv`, `fake_agm.csv`) are written to
+`testing/output/` along with a fresh database, the log, and the results (`verified.csv`, `unverified.csv`,
+`seats.csv`, `unseated.csv`, `seating_run.json`). That folder is gitignored and rebuilt every run; the generators are
+seeded, so the data is the same each time. The pipeline uses the seats in `data/seats_senate.csv`. `config.json` is
+not read or changed, and flags such as `--seed` or `--seats_file` still override the defaults.
+
+`python testing/generate_fake_data.py` regenerates just the fake data, with other settings if you want: the student
+roster (from the seats file) first, then the Senate, SABP and AGM form exports, each drawing its applicants from the
+roster. Use `--only` to pick some, `--students` to set the roster size (it must be at least `--sabp-rows`), and
+`--help` for the seed and row counts. The shared code lives in that file; the per-form logic is in
+`testing/generate_fake_*.py`.
 
 ## Student Aid Bursary Program (SABP)
 
@@ -25,7 +41,7 @@ per-form logic is in `testing/generate_fake_*.py`.
 python -m utsu_core.main --program sap --sap_file path/to/export.csv [--batch_size 50]
 ```
 
-(`--testing` supplies `testing/fake_sabp.csv`.) Column names come from `data/conversion_table_sap.csv`; columns not
+(`--testing` supplies `testing/output/fake_sabp.csv`.) Column names come from `data/conversion_table_sap.csv`; columns not
 listed there are ignored. For each student only the newest application is kept, then it:
 
 - **verifies** name + truncated student number against `uoft_data`, and records one `student_aid` row per application
@@ -65,7 +81,7 @@ applications are logged as warnings.
 python -m utsu_core.main --program agm --agm_file "path/to/RSVP.csv"
 ```
 
-(`--testing` supplies `testing/fake_agm.csv`; `python testing/generate_fake_data.py --only agm` regenerates it.) Columns come from
+(`--testing` supplies `testing/output/fake_agm.csv`; `python testing/generate_fake_data.py --only agm` regenerates it.) Columns come from
 `data/conversion_table_agm.csv`. Each person's newest RSVP is kept, then verified against `uoft_data`:
 
 - the form has **no student number**, so people are matched on their ACORN-registered name (`name_only_match` flag). A
@@ -83,14 +99,14 @@ lists or database rows, to check an RSVP export against a database that already 
 
 ```
 python -m utsu_core.agm_verify --agm_file "path/to/RSVP.csv" --db path/to/db.sqlite [--output_dir DIR]
-python -m utsu_core.agm_verify --testing     # testing/fake_agm.csv against the last `main --testing` database
+python -m utsu_core.agm_verify --testing     # testing/output/fake_agm.csv against the last `main --testing` database
 ```
 
 It writes `agm_verification.csv` (status, reason, match method and flags per person).
 
 ## Emailing (`utsu_mail`)
 
-Mail-merge emails sent directly over SMTP. Run from `src/`:
+Mail-merge emails sent directly over SMTP:
 
 ```
 python -m utsu_mail --list_fields                 # templates + columns from src/schema/*.sql
@@ -115,4 +131,4 @@ that has a missing field. Rows with a bad/duplicate address or a blank field a t
 another sample). Every outcome is appended to `<output_dir>/mail_log_<template>.csv`, and addresses already sent are
 skipped on rerun unless `--resend` is given.
 
-Tests: `python -m pytest tests`.
+Tests: `python -m pytest` (the `pythonpath` and test folder are set in `pyproject.toml`).

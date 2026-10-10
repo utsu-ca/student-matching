@@ -1,8 +1,8 @@
 ﻿"""
-Verify AGM voter RSVPs against uoft_data. Used by agm.py, and runnable on its own from src/:
+Verify AGM voter RSVPs against uoft_data. Used by agm.py, and runnable on its own:
 
     python -m utsu_core.agm_verify --agm_file RSVP.csv --db path/to/db.sqlite [--output_dir DIR]
-    python -m utsu_core.agm_verify --testing        # fake RSVPs in testing/ against the database of the last test run
+    python -m utsu_core.agm_verify --testing        # fake RSVPs from the last `main --testing` run, against its database
 
 The standalone run only reports (agm_verification.csv); it writes no voter lists and no database rows.
 
@@ -16,7 +16,8 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from utsu_std.utils import absfile, get_trunc_id
+from utsu_std.utils import absfile
+from utsu_std.parsing_utils import get_trunc_id
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +132,10 @@ def main():
     parser.add_argument("--db", default="", help="Database holding the uoft_data table")
     parser.add_argument("--output_dir", default="secrets/output", help="Where agm_verification.csv is written")
     parser.add_argument("--testing", action="store_true",
-                        help="Use testing/fake_agm.csv and the database from the last `main --testing` run")
+                        help="Use testing/output/fake_agm.csv and the database from the last `main --testing` run")
     args = parser.parse_args()
     if args.testing:
-        args.agm_file = args.agm_file or "testing/fake_agm.csv"
+        args.agm_file = args.agm_file or "testing/output/fake_agm.csv"
         args.db = args.db or "testing/output/test.sqlite"
         args.output_dir = "testing/output" if args.output_dir == "secrets/output" else args.output_dir
     if not args.agm_file or not args.db:

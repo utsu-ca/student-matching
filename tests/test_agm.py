@@ -1,9 +1,6 @@
 import csv
 import sqlite3
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from utsu_core import agm, agm_verify
 from utsu_core.verification import construct_lookup_tables

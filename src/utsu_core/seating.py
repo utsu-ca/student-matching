@@ -5,7 +5,8 @@ import random
 from collections import Counter
 from pathlib import Path
 
-from utsu_core.senate import PREF_PREFIX, division_code
+from utsu_core.senate import PREF_PREFIX
+from utsu_std.parsing_utils import division_code
 from utsu_std.utils import absfile
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ def assign_seats(applicants: list[dict], seats: dict[tuple[str, str], int], seed
       3. Faculty/College seats still empty go to unseated applicants of that division who ranked General
          Member, best General Member tier first.
       4. General Member seats are the catch-all for everyone still unseated, those who ranked General
-         Member first (seats labelled NOT_RANKED when they did not).
+         Member first (seats labeled NOT_RANKED when they did not).
     Ties are broken by a seeded RNG, so the same inputs and seed always give the same result.
     """
     rng = random.Random(seed)

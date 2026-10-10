@@ -2,6 +2,7 @@ import argparse
 import csv
 import logging
 import sqlite3
+import sys
 from pathlib import Path
 
 from utsu_core.importing_data import import_uoft_data, preprocess_uoft_csv
@@ -11,8 +12,8 @@ from utsu_core.sap import merge_reviews, process_sap
 from utsu_core.seating import run_seating
 from utsu_core.verification import bulk_check_for_students
 from utsu_std.database import get_connection
-from utsu_std.utils import absfile, get_trunc_id, normalize_case, normalize_name, setup_logging, load_and_merge_config
-
+from utsu_std.utils import absfile, normalize_case, setup_logging, load_and_merge_config
+from utsu_std.parsing_utils import get_trunc_id, normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -127,21 +128,39 @@ def run_verification_of_csv(csv_path: str, db_path: str):
 
 
 TESTING_DIR = "testing"
+PATH_KEYS = ("verify_student", "sap_file", "agm_file", "import_uoft_data", "db", "log_file", "output_dir", "seats_file")
+
+
+def resolve_paths(cfg: dict) -> dict:
+    """Make every path setting absolute. Relative paths are taken from the project root, not the working directory."""
+    for key in PATH_KEYS:
+        if cfg.get(key):
+            cfg[key] = str(absfile(cfg[key]))
+    return cfg
+
+
+def build_fake_data() -> None:
+    """Write the fake roster and form exports to testing/output/. Seeded, so every run produces the same files."""
+    testing = str(absfile(TESTING_DIR))
+    if testing not in sys.path:
+        sys.path.insert(0, testing)
+    from generate_fake_data import generate_all
+    generate_all()
 
 
 def apply_testing_mode(args, parser) -> dict:
     """
-    Settings for --testing: read the fake data in testing/, and write the database, logs and results to
+    Settings for --testing: generate the fake data, read it, and write the database, logs and results, all in
     testing/output/. config.json is neither read nor written, and a fresh database is built every run.
     Flags given explicitly on the command line still win over these defaults.
     """
     out = TESTING_DIR + "/output"
     defaults = {
-        "verify_student": f"{TESTING_DIR}/fake_senator.csv",
-        "sap_file": f"{TESTING_DIR}/fake_sabp.csv",
-        "agm_file": f"{TESTING_DIR}/fake_agm.csv",
+        "verify_student": f"{out}/fake_senator.csv",
+        "sap_file": f"{out}/fake_sabp.csv",
+        "agm_file": f"{out}/fake_agm.csv",
         "reviewers": "Reviewer_A,Reviewer_B,Reviewer_C",
-        "import_uoft_data": f"{TESTING_DIR}/fake_uoft_data.csv",
+        "import_uoft_data": f"{out}/fake_uoft_data.csv",
         "db": f"{out}/test.sqlite",
         "log_file": f"{out}/test.log",
         "output_dir": out,
@@ -150,11 +169,10 @@ def apply_testing_mode(args, parser) -> dict:
     for key, value in defaults.items():
         if cfg[key] == parser.get_default(key):
             cfg[key] = value
-    for key in ("verify_student", "sap_file", "agm_file", "import_uoft_data", "db", "log_file", "output_dir",
-                "seats_file"):
-        cfg[key] = str(absfile(cfg[key])) if cfg[key] else cfg[key]
+    resolve_paths(cfg)
     absfile(out).mkdir(parents=True, exist_ok=True)
     if not cfg.get("merge_reviews"):  # merging reads the reviewer assignments saved by the last run
+        build_fake_data()
         Path(cfg["db"]).unlink(missing_ok=True)
     return cfg
 
@@ -166,8 +184,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="")
     parser.add_argument("--testing", default=True, action="store_true",
-                        help="Run on the fake data in testing/ and write everything to testing/output/")
-    parser.add_argument("--verify_student", default="../../verify.csv",
+                        help="Generate the fake data, run on it, and write everything to testing/output/")
+    parser.add_argument("--verify_student", default="secrets/verify.csv",
                         help="Verify that the provided path to a CSV file matches the stored student data")
     parser.add_argument("--program", default="all", choices=["senate", "sap", "agm", "all"],
                         help="Which program to process: Senate applications, Student Aid Bursary (SABP), AGM voter "
@@ -183,15 +201,15 @@ if __name__ == "__main__":
     parser.add_argument("--merge_reviews", default=False, action="store_true",
                         help="Merge the completed reviewer sheets into sap_merged_ratings.csv instead of processing")
     
-    parser.add_argument("--db", default="../../secrets/db.sqlite",
+    parser.add_argument("--db", default="secrets/db.sqlite",
                             help="Path to the database file containing student data")
 
-    parser.add_argument("--import_uoft_data", default="../../fake_uoft_data.csv",
+    parser.add_argument("--import_uoft_data", default="secrets/uoft_data.csv",
                         help="Path to the CSV file containing student data to be parsed")
 
     parser.add_argument("--verbosity", default="TRACE",
                         help="Set the logging verbosity level")
-    parser.add_argument("--log_file", default="../../app.log",
+    parser.add_argument("--log_file", default="secrets/app.log",
                         help="Path to the log file")
     parser.add_argument("--seats_file", default="data/seats_senate.csv",
                         help="CSV of seats per constituency (columns: constituency,division,seats)")
@@ -205,8 +223,8 @@ if __name__ == "__main__":
                         help="Run the script in dry run mode without making any changes")
         
     
-    parser.add_argument("--config", default="../../config.json",
-                        help="Path to a JSON config file with settings")
+    parser.add_argument("--config", default="config.json",
+                        help="Path to a JSON config file with settings (relative paths are from the project root)")
 
     args = parser.parse_args()
     args = apply_testing_mode(args, parser) #if args.testing else load_and_merge_config(args, parser)

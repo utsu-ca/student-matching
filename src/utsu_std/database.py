@@ -3,12 +3,15 @@ from pathlib import Path
 import sqlite3
 import csv
 
-from utsu_std.utils import generate_uuid, normalize_case, get_uoft_trunc_format, get_trunc_id
+from utsu_std.utils import absfile, generate_uuid, normalize_case
+from utsu_std.parsing_utils import get_uoft_trunc_format, get_trunc_id
 
 logger = logging.getLogger(__name__)
 
 def get_connection(filepath : Path):
-    return sqlite3.connect(filepath)
+    path = absfile(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(path)
 
 def import_csv_to_db(csv_file: Path, table_name: str, conn: sqlite3.Connection):
     """

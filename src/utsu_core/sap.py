@@ -15,7 +15,8 @@ from pathlib import Path
 
 from utsu_core.senate import keep_newest, parse_submission_ts
 from utsu_core.verification import bulk_check_for_students, setup_reader
-from utsu_std.utils import absfile, generate_uuid, get_trunc_id, normalize_case
+from utsu_std.utils import absfile, generate_uuid, normalize_case
+from utsu_std.parsing_utils import get_trunc_id
 
 logger = logging.getLogger(__name__)
 

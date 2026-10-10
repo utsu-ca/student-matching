@@ -1,5 +1,5 @@
 """
-Fake UofT student data (testing/fake_uoft_data.csv), the roster every other form's applicants are verified against.
+Fake UofT student data (testing/output/fake_uoft_data.csv), the roster every other form's applicants are verified against.
 Run through generate_fake_data.py.
 
 It is deterministic and built from data/seats_senate.csv: every division gets a few students, and always more than it
@@ -9,10 +9,10 @@ roster (how many students there are to draw applicants from) is set here, with g
 """
 from itertools import count
 
-from generate_fake_data import DEFAULT_SEED, DEFAULT_STUDENTS, DIVISION_WEIGHTS, ORIGINAL_STUDENTS, TESTING, Gen, \
+from generate_fake_data import DEFAULT_SEED, DEFAULT_STUDENTS, DIVISION_WEIGHTS, ORIGINAL_STUDENTS, OUTPUT_DIR, Gen, \
     division_of, generate_student, load_seats, write_students
 
-OUT = TESTING / "fake_uoft_data.csv"
+OUT = OUTPUT_DIR / "fake_uoft_data.csv"
 PER_DIVISION = 3
 
 

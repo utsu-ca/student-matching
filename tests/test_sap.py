@@ -1,11 +1,8 @@
 import csv
 import sqlite3
-import sys
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from utsu_core import sap
 from utsu_core.verification import construct_lookup_tables

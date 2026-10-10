@@ -1,7 +1,6 @@
 ﻿
 
 from argparse import ArgumentParser, Namespace
-import csv
 import json
 import logging
 from pathlib import Path
@@ -37,7 +36,9 @@ def setup_logging(args):
     format_string = "%(asctime)s [%(levelname)s] %(message)s"
 
     if log_file:
-        handlers.append(logging.FileHandler(log_file, mode='a', encoding='utf-8'))
+        log_path = absfile(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_path, mode='a', encoding='utf-8'))
     
     if dry_run:
         if verbosity < 3:
@@ -107,7 +108,7 @@ def addLoggingLevel(levelName, levelNum, methodName=None):
 def save_config_file(path: str, cfg):
     """Save JSON config."""
     try:
-        p = Path(path)
+        p = absfile(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -121,7 +122,7 @@ def load_config_file(path: str) -> dict[any, any]: # type: ignore
     if not path:
         return {}
     try:
-        p = Path(path)
+        p = absfile(path)
         if not p.exists():
             logger.error(f"Config file not found: {path}")
             return {}
@@ -206,28 +207,6 @@ def normalize_case(txt: str) -> str:
     # Step 4: Collapse runs of whitespace into a single space and trim the ends
     return re.sub(r'\s+', ' ', capitalized).strip()
 
-def normalize_name(first_name: str, last_name: str) -> str:
-    """
-    Normalize the full name by normalizing the first and last names and combining them.
-
-    Parameters
-    ----------
-    first_name : str
-        The first name of the person.
-    last_name : str
-        The last name of the person.
-
-    Returns
-    -------
-    str
-        The normalized full name in the format "First Last".
-
-    Example
-    -------
-    >>> normalize_name("  john  ", "  doe  ")
-    'John Doe'
-    """
-    return f"{normalize_case(first_name)} {normalize_case(last_name)}"
 
 def generate_uuid(base: str) -> str:
     """
@@ -245,76 +224,13 @@ def generate_uuid(base: str) -> str:
     namespace = uuid.NAMESPACE_URL
     return str(uuid.uuid5(namespace, base))
 
-def get_uoft_trunc_format(student_number: str) -> str:
-    """
-    Get the truncated student number in the format 'xxxxx####x'.
-
-    Parameters
-    ----------
-    student_number : str
-        The original student number.
-
-    Returns
-    -------
-    str
-        The truncated student number in UofT format.
-    
-    >>> get_uoft_trunc_format("1234567890")
-    'xxxxx6789x'
-    """
-    return "xxxxx" + student_number[-5:-1] + "x"
-
-def get_trunc_id(id_txt: str):
-    # sanity strip
-    id_txt.strip()
-    if len(id_txt) == 4:
-        # string is likely already in the correct format
-        return id_txt
-
-    if id_txt[-1] == "x":
-        # str likely needs to be stripped
-        return id_txt.strip("x")
-
-    if len(id_txt) > 8:
-        trunc = id_txt[-5:-1]
-        return trunc
-
-def strip_uoft_trunc_placeholders(csv_file: Path):
-    """
-    Strip the placeholder x characters from the truncated student number in the CSV file and save it to a temporary file.
-
-    Parameters
-    ----------
-    csv_file : Path
-        The path to the CSV file.
-
-    Returns
-    -------
-    Path
-        The path to the temporary CSV file with stripped truncated student numbers.
-
-    """
-    temp_file = csv_file.with_suffix(".stripped.csv")
-    with open(csv_file, newline='') as f_in, open(temp_file, 'w', newline='') as f_out:
-        reader = csv.reader(f_in)
-        headers = next(reader)
-
-        if "Truncated Student Number" not in headers:
-            raise ValueError("CSV file does not contain 'Truncated Student Number' column.")
-
-        trunc_col_indx = headers.index("Truncated Student Number")
-        writer = csv.writer(f_out)
-        writer.writerow(headers)
-        for row in reader:
-            row[trunc_col_indx] = row[trunc_col_indx].strip("x")  # Strip the Truncated Student Number column
-            writer.writerow(row)
-    return temp_file
 
 def find_project_root(path: Path | str | None = None) -> Path:
     """
-    Find the project root, defined as the directory that contains the `src` folder.
+    Find the project root, defined as the directory that holds `pyproject.toml` (or the `src` folder).
 
-    Searches upward from `path` (a file or directory; defaults to this file's location).
+    Searches upward from `path` (a file or directory; defaults to this file's location), so the result
+    does not depend on the current working directory.
     If no root is found, the path is returned unchanged.
 
     >>> find_project_root(Path("/nonexistent/place")) == Path("/nonexistent/place")
@@ -325,6 +241,8 @@ def find_project_root(path: Path | str | None = None) -> Path:
     current = resolved if resolved.is_dir() else resolved.parent
 
     for candidate in (current, *current.parents):
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
         if candidate.name == "src":
             return candidate.parent
         if (candidate / "src").is_dir():

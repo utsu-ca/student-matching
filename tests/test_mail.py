@@ -1,11 +1,8 @@
 import csv
 import random
-import sys
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from utsu_mail import campaign, transport
 from utsu_mail.__main__ import main

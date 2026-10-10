@@ -6,7 +6,8 @@ from datetime import datetime
 from pathlib import Path
 
 from utsu_core.verification import setup_reader, bulk_check_for_students
-from utsu_std.utils import absfile, generate_uuid, get_trunc_id, normalize_case
+from utsu_std.utils import absfile, generate_uuid, normalize_case
+from utsu_std.parsing_utils import get_trunc_id
 
 logger = logging.getLogger(__name__)
 
@@ -15,16 +16,7 @@ PREF_PREFIX = "pref:"
 _PREF_COLUMN = re.compile(r"^\s*Constituency Choice \[(.+)\]\s*$")
 
 
-def division_code(division: str) -> str:
-    """
-    The code in a form division such as 'TRIN - Trinity College'.
 
-    >>> division_code("TRIN - Trinity College")
-    'TRIN'
-    >>> division_code(" uc ")
-    'UC'
-    """
-    return division.split(" - ")[0].strip().upper()
 
 
 def read_preferences(row: dict[str, str]) -> dict[str, str]:
@@ -103,7 +95,7 @@ def verify_senators(csv_file: Path, cursor: sqlite3.Cursor, log_sample: bool = F
     """
     if isinstance(csv_file, str):
         csv_file = Path(csv_file)
-    senators: csv.DictReader = setup_reader(csv_file, absfile("data/lookup_table_senate.csv"))
+    senators: csv.DictReader = setup_reader(csv_file, absfile("data/conversion_table_senate.csv"))
 
     applications = []
     for row in senators:

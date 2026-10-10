@@ -1,16 +1,16 @@
 """
-Fake Student Aid Bursary Program (SABP) applications shaped like the real form export (testing/fake_sabp.csv).
+Fake Student Aid Bursary Program (SABP) applications shaped like the real form export (testing/output/fake_sabp.csv).
 Run through generate_fake_data.py.
 
-Applicants are drawn from testing/fake_uoft_data.csv (so name + truncated student number verify against it), which is
+Applicants are drawn from testing/output/fake_uoft_data.csv (so name + truncated student number verify against it), which is
 sized when it is generated: SABP only reads it and needs about as many students as applications. About 2% of
 applicants are not in it at all, so they never verify.
 """
 from datetime import datetime, timedelta
 
-from generate_fake_data import DEFAULT_SEED, TESTING, Gen, email_for, fmt_ts, load_students, not_in_roster, write_csv
+from generate_fake_data import DEFAULT_SEED, OUTPUT_DIR, Gen, email_for, fmt_ts, load_students, not_in_roster, write_csv
 
-OUT = TESTING / "fake_sabp.csv"
+OUT = OUTPUT_DIR / "fake_sabp.csv"
 
 HEADERS = [
     "Timestamp", "Application Semester", "Confirmation of UTSU Membership", "ACORN-registered First Name",

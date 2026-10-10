@@ -1,16 +1,16 @@
 """
 Fake AGM voter RSVPs. Run through generate_fake_data.py.
 
-Most RSVPs are drawn from testing/fake_uoft_data.csv so they verify; a few have a misspelled or unknown name, about 2%
+Most RSVPs are drawn from testing/output/fake_uoft_data.csv so they verify; a few have a misspelled or unknown name, about 2%
 of people RSVP twice, and pronouns can be several sets ("they/them;it/its") or "Any". The meeting-preference, dietary
 and accessibility options are placeholders (the real form's wording is not known).
 """
 from datetime import datetime, timedelta
 
-from generate_fake_data import DEFAULT_SEED, TESTING, Gen, email_for, fmt_ts, load_students, slug, student_name, \
+from generate_fake_data import DEFAULT_SEED, OUTPUT_DIR, Gen, email_for, fmt_ts, load_students, slug, student_name, \
     write_csv
 
-OUT = TESTING / "fake_agm.csv"
+OUT = OUTPUT_DIR / "fake_agm.csv"
 
 HEADERS = ["Timestamp", "Username", "Preferred Name", "Preferred Pronouns", "ACORN-registered First Name",
            "ACORN-registered Last Name ", "UofT Email Address", "Meeting Preference",

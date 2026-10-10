@@ -1,18 +1,18 @@
 """
-Fake Senate applications shaped like the real form export (testing/fake_senator.csv). Run through
+Fake Senate applications shaped like the real form export (testing/output/fake_senator.csv). Run through
 generate_fake_data.py.
 
-Applicants are drawn from testing/fake_uoft_data.csv (generate the student data first), with delegations sized per
+Applicants are drawn from testing/output/fake_uoft_data.csv (generate the student data first), with delegations sized per
 division to exercise exact fit, overflow and none. A handful of applications are deliberately unverifiable (wrong
 student number, misspelled name, not a student at all), resubmitted, or impossible to seat. The data is deterministic.
 """
 import csv
 from datetime import datetime, timedelta
 
-from generate_fake_data import DIVISION_NAMES, TESTING, Gen, division_of, email_for, fmt_ts, load_seats, \
+from generate_fake_data import DIVISION_NAMES, OUTPUT_DIR, Gen, division_of, email_for, fmt_ts, load_seats, \
     load_students, not_in_roster, student_key, write_csv
 
-OUT = TESTING / "fake_senator.csv"
+OUT = OUTPUT_DIR / "fake_senator.csv"
 SEED = "UTSU"
 
 HEADERS_BEFORE_CHOICES = [
@@ -53,7 +53,7 @@ def generate(seed=SEED) -> None:
     rng = g.rng
     students = load_students()
     if not students:
-        raise SystemExit("No student data to draw applicants from; generate testing/fake_uoft_data.csv first")
+        raise SystemExit("No student data to draw applicants from; generate testing/output/fake_uoft_data.csv first")
 
     seats = load_seats()
     constituencies = [r["constituency"] for r in seats if r["constituency"] != "Faculty/College"]

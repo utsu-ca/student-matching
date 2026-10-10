@@ -50,7 +50,7 @@ def preprocess_uoft_csv(csv_file: Path):
         raise FileNotFoundError(f"CSV file not found: {csv_file}")
 
     required_col = ("First Name", "Last Name", "Truncated Student Number", "Faculty", "Division")
-    processed_csv_file = Path(str(csv_file.stem) + "_processed.csv")
+    processed_csv_file = csv_file.with_name(csv_file.stem + "_processed.csv")
     with open(csv_file, newline='', encoding='utf-8-sig') as f_in, \
             open(processed_csv_file, 'w', newline='', encoding='utf-8') as f_out:
         reader = csv.reader(f_in)

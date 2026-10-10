@@ -5,10 +5,13 @@ Generate all the fake test data. This is the single entry point; the per-form lo
     python testing/generate_fake_data.py --only senate sabp       # just some of them
     python testing/generate_fake_data.py --seed 7 --students 5000 --sabp-rows 4000
 
-    students  generate_fake_student_data.py  testing/fake_uoft_data.csv (from data/seats_senate.csv)
-    senate    generate_fake_senate.py        testing/fake_senator.csv
-    sabp      generate_fake_sabp.py          testing/fake_sabp.csv
-    agm       generate_fake_agm.py           testing/fake_agm.csv
+The files are written to testing/output/ (not committed). `python -m utsu_core.main --testing` calls generate_all()
+itself, so it only needs running by hand to regenerate with other seeds or sizes.
+
+    students  generate_fake_student_data.py  testing/output/fake_uoft_data.csv (from data/seats_senate.csv)
+    senate    generate_fake_senate.py        testing/output/fake_senator.csv
+    sabp      generate_fake_sabp.py          testing/output/fake_sabp.csv
+    agm       generate_fake_agm.py           testing/output/fake_agm.csv
 
 students runs first because it writes the UofT student file that senate, sabp and agm draw their applicants from;
 after that the form generators are independent of each other. The same seed always produces the same files. This
@@ -20,15 +23,18 @@ import csv
 import math
 import random
 import re
+import sys
 import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTING = ROOT / "testing"
-UOFT_DATA = TESTING / "fake_uoft_data.csv"
+OUTPUT_DIR = TESTING / "output"
+UOFT_DATA = OUTPUT_DIR / "fake_uoft_data.csv"
 DEFAULT_SEED = "UTSU-482"
 DEFAULT_STUDENTS = 500  # size of the fake_uoft_data.csv roster the forms draw their applicants from
+DEFAULT_SABP_ROWS = 500
 DEFAULT_ENCODING = "utf-8-sig"
 
 FIRST = ["Amara", "Priya", "Jonas", "Fatima", "Wei", "Sofia", "Tobias", "Nadia", "Kwame", "Hannah", "Maya", "Yuki",
@@ -250,18 +256,43 @@ def write_csv(path: Path, headers: list[str], rows: list[list], **writer_options
         writer.writerows(rows)
 
 
+def generate_all(only=None, seed=DEFAULT_SEED, students=DEFAULT_STUDENTS, sabp_rows=DEFAULT_SABP_ROWS,
+                 sabp_unmatched=3, sabp_start="2026-09-16", sabp_end="2026-10-09", agm_rows=200) -> None:
+    """Write the fake data files to OUTPUT_DIR: all of them, or just those named in `only`."""
+    selected = only or ["students", "senate", "sabp", "agm"]
+
+    # The generators import this module for the shared code, and this file's folder is not otherwise importable
+    # when called from elsewhere (e.g. `python -m utsu_core.main --testing`).
+    if str(TESTING) not in sys.path:
+        sys.path.insert(0, str(TESTING))
+    if "students" in selected:
+        import generate_fake_student_data
+        generate_fake_student_data.generate(size=students)
+    if "senate" in selected:
+        import generate_fake_senate
+        generate_fake_senate.generate()
+    if "sabp" in selected:
+        import generate_fake_sabp
+        generate_fake_sabp.generate(rows=sabp_rows, seed=seed, unmatched=sabp_unmatched,
+                                    start=sabp_start, end=sabp_end)
+    if "agm" in selected:
+        import generate_fake_agm
+        generate_fake_agm.generate(rows=agm_rows, seed=seed)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", nargs="+", choices=["students", "senate", "sabp", "agm"],
                         help="Generate only these (default: all). senate, sabp and agm need "
-                             "testing/fake_uoft_data.csv to draw applicants from, which students writes")
+                             "testing/output/fake_uoft_data.csv to draw applicants from, which students writes")
     parser.add_argument("--seed", type=int,
                         help=f"Seed for sabp and agm (default {DEFAULT_SEED}); students and senate are fixed")
     parser.add_argument("--students", type=int, default=DEFAULT_STUDENTS,
                         help=f"Size of the UofT student roster the forms draw applicants from (default "
                              f"{DEFAULT_STUDENTS}); SABP applicants are all drawn from it, so it must be at least "
                              f"--sabp-rows")
-    parser.add_argument("--sabp-rows", type=int, default=500, help="Number of SABP applications (default 500)")
+    parser.add_argument("--sabp-rows", type=int, default=DEFAULT_SABP_ROWS,
+                        help=f"Number of SABP applications (default {DEFAULT_SABP_ROWS})")
     parser.add_argument("--sabp-unmatched", type=float, default=3,
                         help="Percent of SABP applications whose last name is misspelled, so they fail verification "
                              "(default 3)")
@@ -269,24 +300,10 @@ def main():
     parser.add_argument("--sabp-end", default="2026-10-09", help="Last day of the SABP application window")
     parser.add_argument("--agm-rows", type=int, default=200, help="Number of AGM RSVPs, before duplicates (default 200)")
     args = parser.parse_args()
-    
-    selected = args.only or ["students", "senate", "sabp", "agm"]
-    seed = DEFAULT_SEED if args.seed is None else args.seed
 
-    # Imported here because these modules import this one for the shared code.
-    if "students" in selected:
-        import generate_fake_student_data
-        generate_fake_student_data.generate(size=args.students)
-    if "senate" in selected:
-        import generate_fake_senate
-        generate_fake_senate.generate()
-    if "sabp" in selected:
-        import generate_fake_sabp
-        generate_fake_sabp.generate(rows=args.sabp_rows, seed=seed, unmatched=args.sabp_unmatched,
-                                    start=args.sabp_start, end=args.sabp_end)
-    if "agm" in selected:
-        import generate_fake_agm
-        generate_fake_agm.generate(rows=args.agm_rows, seed=seed)
+    generate_all(only=args.only, seed=DEFAULT_SEED if args.seed is None else args.seed, students=args.students,
+                 sabp_rows=args.sabp_rows, sabp_unmatched=args.sabp_unmatched, sabp_start=args.sabp_start,
+                 sabp_end=args.sabp_end, agm_rows=args.agm_rows)
 
 
 if __name__ == "__main__":
